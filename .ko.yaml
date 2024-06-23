@@ -1,0 +1,14 @@
+defaultEnv:
+- CGO_ENABLED=0
+
+defaultPLatforms:
+- linux/amd64
+- linux/arm
+- linux/arm64
+
+builds:
+- id: wn-smartmeter-influx
+  main: ./cmd/wn-smartmeter-influx
+  ldflags:
+  - -X github.com/hoegaarden/smartmeter-wiener-netze.buildVersion={{ .Git.ShortCommit }}
+  - -X github.com/hoegaarden/smartmeter-wiener-netze.buildDate={{ .Date }}
