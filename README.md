@@ -26,3 +26,12 @@ Other things to know:
   wrong or incomplete data. You have been warned.
 - Only things I need are implemented. If you want other stuff, pull other data
   from the smart meter portal, feel free to open a issue or, better yet, a PR!
+
+Images:
+
+The [example binary][bin] is published as a container image at
+`ghcr.io/hoegaarden/smartmeter-wiener-netze/wn-smartmeter-influx:latest`, you
+can see details about that [here][imageDetails].
+
+[bin]: cmd/wn-smartmeter-influx/
+[imageDetails]: https://github.com/hoegaarden/smartmeter-wiener-netze/pkgs/container/smartmeter-wiener-netze%2Fwn-smartmeter-influx
