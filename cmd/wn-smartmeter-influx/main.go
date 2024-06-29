@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"time"
 
@@ -13,9 +15,11 @@ import (
 
 const usage = `
 Pulls 15m consumption data from Wiener Netze Smartmeter API and prints it in
-the influx line protocol on stdout. It does this for all smart meters in the
+the influx line protocol. It does this for all smart meters in the
 customer's account. To log in, 'SMARTMETER_USERNAME' and 'SMARTMETER_PASSWORD'
 need to be set in the environment to the creds for log.wien.
+Output is produced on stdout by default. When 'toHost' is set, the data is
+pushed out via a tcp connection.
 
 All metrics will have a single value 'value' and are tagged with:
 - the meter's ID as 'meterID'
@@ -31,11 +35,12 @@ Data starts from the first reading on the 'start' date to the last reading on
 `
 
 func main() {
-	var startDay, endDay, metricName string
+	var startDay, endDay, metricName, toHost string
 
-	flag.StringVar(&startDay, "start", "", "start day, in ISO 8601)")
-	flag.StringVar(&endDay, "end", "", "end day, in ISO 8601)")
+	flag.StringVar(&startDay, "start", "", "start day, in ISO 8601")
+	flag.StringVar(&endDay, "end", "", "end day, in ISO 8601")
 	flag.StringVar(&metricName, "metricName", "smartmeter", "name of the metric")
+	flag.StringVar(&toHost, "toHost", "", "<host>:<port> to push metrics out via tcp, eg. to telegraf")
 
 	flag.Usage = func(orgUsage func()) func() {
 		return func() {
@@ -92,6 +97,16 @@ func main() {
 		panic(err)
 	}
 
+	writer := io.Writer(os.Stdout)
+	if toHost != "" {
+		conn, err := net.Dial("tcp", toHost)
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+		writer = conn
+	}
+
 	for _, meter := range meters {
 		export, err := client.Export(meter.CustomerID, meter.ID, start, end)
 		if err != nil {
@@ -113,7 +128,7 @@ func main() {
 				point.To.Time,
 			)
 
-			if err := serializer.Write(os.Stdout, metric); err != nil {
+			if err := serializer.Write(writer, metric); err != nil {
 				panic(err)
 			}
 		}
