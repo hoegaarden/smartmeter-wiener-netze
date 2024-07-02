@@ -34,13 +34,15 @@ Data starts from the first reading on the 'start' date to the last reading on
 'end' date; all times/date are in UTC. Both 'start' and 'end' are mandatory.
 `
 
+const stdout = "stdout"
+
 func main() {
-	var startDay, endDay, metricName, toHost string
+	var startDay, endDay, metricName, output string
 
 	flag.StringVar(&startDay, "start", "", "start day, in ISO 8601")
 	flag.StringVar(&endDay, "end", "", "end day, in ISO 8601")
 	flag.StringVar(&metricName, "metricName", "smartmeter", "name of the metric")
-	flag.StringVar(&toHost, "toHost", "", "<host>:<port> to push metrics out via tcp, eg. to telegraf")
+	flag.StringVar(&output, "toHost", stdout, fmt.Sprintf("<host>:<port> to push metrics out via tcp, eg. to telegraf, or %q to print to stdout", stdout))
 
 	flag.Usage = func(orgUsage func()) func() {
 		return func() {
@@ -68,10 +70,6 @@ func main() {
 	}
 	end = end.Add(24 * time.Hour).Truncate(24 * time.Hour).Add(-time.Microsecond)
 
-	if _, err := fmt.Fprintf(os.Stderr, "## Export -- start: %s, end: %s\n", start, end); err != nil {
-		panic(err)
-	}
-
 	username, ok := os.LookupEnv("SMARTMETER_USERNAME")
 	if !ok {
 		panic("SMARTMETER_USERNAME not set")
@@ -98,14 +96,24 @@ func main() {
 	}
 
 	writer := io.Writer(os.Stdout)
-	if toHost != "" {
-		conn, err := net.Dial("tcp", toHost)
+	if output != stdout {
+		conn, err := net.Dial("tcp", output)
 		if err != nil {
 			panic(err)
 		}
 		defer conn.Close()
 		writer = conn
 	}
+
+	if _, err := fmt.Fprintf(os.Stderr, "## Export -- start: %s, end: %s\n", start, end); err != nil {
+		panic(err)
+	}
+	outputCount := 0
+	defer func() {
+		if _, err := fmt.Fprintf(os.Stderr, "## Exported %d points to %s\n", outputCount, output); err != nil {
+			panic(err)
+		}
+	}()
 
 	for _, meter := range meters {
 		export, err := client.Export(meter.CustomerID, meter.ID, start, end)
@@ -131,6 +139,8 @@ func main() {
 			if err := serializer.Write(writer, metric); err != nil {
 				panic(err)
 			}
+
+			outputCount++
 		}
 	}
 }
