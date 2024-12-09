@@ -48,35 +48,19 @@ func Login(username, password string) (*Client, error) {
 	}
 	defer loginPageRes.Body.Close()
 
-	doc, err := htmlquery.Parse(loginPageRes.Body)
+	userResp, err := fillForm(httpClient, loginPageRes, "username", username)
 	if err != nil {
-		return nil, fmt.Errorf("parsing login page: %w", err)
+		return nil, fmt.Errorf("filling username form: %w", err)
 	}
+	defer userResp.Body.Close()
 
-	formAction, err := htmlquery.Query(doc, "//form/@action")
-	if err != nil || formAction == nil {
-		if err == nil {
-			err = fmt.Errorf("form action not found")
-		}
-		return nil, fmt.Errorf("extracting login form action: %w", err)
-	}
-	loginActionURL := htmlquery.InnerText(formAction)
-	if loginActionURL == "" {
-		return nil, fmt.Errorf("login action URL is empty")
-	}
-
-	// We need to ensure not to follow redirects here, we need the URL it would
-	// redirect us to, so we can extract the code from the fragment
-	loginActionRes, err := withoutRedirect(httpClient).PostForm(loginActionURL, url.Values{
-		"username": []string{username},
-		"password": []string{password},
-	})
+	passwordResp, err := fillForm(httpClient, userResp, "password", password)
 	if err != nil {
-		return nil, fmt.Errorf("submitting login form: %w", err)
+		return nil, fmt.Errorf("filling password form: %w", err)
 	}
-	defer loginActionRes.Body.Close()
+	defer passwordResp.Body.Close()
 
-	redirectLoc, err := loginActionRes.Location()
+	redirectLoc, err := passwordResp.Location()
 	if err != nil {
 		return nil, fmt.Errorf("getting redirect URL (wrong credentials?): %w", err)
 	}
@@ -128,6 +112,34 @@ func Login(username, password string) (*Client, error) {
 		wienerStadtwerkeClient: wstwClient,
 		wienerNetzeClient:      wnClient,
 	}, nil
+}
+
+func fillForm(client *http.Client, lastResp *http.Response, paramName, paramValue string) (*http.Response, error) {
+	doc, err := htmlquery.Parse(lastResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("parsing form page: %w", err)
+	}
+
+	formAction, err := htmlquery.Query(doc, "//form/@action")
+	if err != nil || formAction == nil {
+		if err == nil {
+			err = fmt.Errorf("form action not found")
+		}
+		return nil, fmt.Errorf("extracting login form action: %w", err)
+	}
+	formActionURL := htmlquery.InnerText(formAction)
+	if formActionURL == "" {
+		return nil, fmt.Errorf("login action URL is empty")
+	}
+
+	formActionRes, err := withoutRedirect(client).PostForm(formActionURL, url.Values{
+		paramName: []string{paramValue},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("submitting login form: %w", err)
+	}
+
+	return formActionRes, nil
 }
 
 type tokenData struct {
