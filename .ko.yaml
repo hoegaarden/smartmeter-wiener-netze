@@ -1,6 +1,8 @@
 defaultEnv:
 - CGO_ENABLED=0
 
+defaultBaseImage: alpine:latest
+
 defaultPLatforms:
 - linux/amd64
 - linux/arm
