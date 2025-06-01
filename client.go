@@ -1,6 +1,7 @@
 package smartmeter
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -157,14 +158,9 @@ type tokenData struct {
 type headersFunc = func() map[string]string
 
 func httpClientWithReqHeaders(orgClient *http.Client, headersFunc headersFunc) *http.Client {
-	inner := orgClient.Transport
-	if inner == nil {
-		inner = http.DefaultTransport
-	}
-
 	return withTransport(orgClient, &reqHeaderFuncRoundTripper{
 		headersFunc: headersFunc,
-		inner:       inner,
+		inner:       cmp.Or(orgClient.Transport, http.DefaultTransport),
 	})
 }
 
@@ -184,21 +180,23 @@ func (rt *reqHeaderFuncRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 }
 
 func withoutRedirect(orgClient *http.Client) *http.Client {
-	newClient := &http.Client{}
-	if orgClient != nil {
-		*newClient = *orgClient
-	}
-	newClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+	c := safeCopy(orgClient)
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
-	return newClient
+	return c
 }
 
 func withTransport(orgClient *http.Client, transport http.RoundTripper) *http.Client {
+	c := safeCopy(orgClient)
+	c.Transport = transport
+	return c
+}
+
+func safeCopy(orgClient *http.Client) *http.Client {
 	newClient := &http.Client{}
 	if orgClient != nil {
 		*newClient = *orgClient
 	}
-	newClient.Transport = transport
 	return newClient
 }
