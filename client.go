@@ -2,6 +2,9 @@ package smartmeter
 
 import (
 	"cmp"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -35,12 +38,19 @@ func Login(username, password string) (*Client, error) {
 		return map[string]string{"User-Agent": userAgent}
 	})
 
+	pkce, err := NewPKCE()
+	if err != nil {
+		return nil, fmt.Errorf("generating PKCE: %w", err)
+	}
+
 	loginURL := AuthURL + "auth?" + url.Values{
-		"client_id":     []string{ClientID},
-		"redirect_uri":  []string{RedirectURL},
-		"response_mode": []string{"fragment"},
-		"response_type": []string{"code"},
-		"scope":         []string{"openid"},
+		"client_id":             []string{ClientID},
+		"redirect_uri":          []string{RedirectURL},
+		"response_mode":         []string{"fragment"},
+		"response_type":         []string{"code"},
+		"scope":                 []string{"openid"},
+		"code_challenge_method": []string{pkce.Method()},
+		"code_challenge":        []string{pkce.Challenge()},
 	}.Encode()
 
 	loginPageRes, err := httpClient.Get(loginURL)
@@ -77,10 +87,11 @@ func Login(username, password string) (*Client, error) {
 	}
 
 	tokenRes, err := httpClient.PostForm(AuthURL+"token", url.Values{
-		"code":         []string{code},
-		"grant_type":   []string{"authorization_code"},
-		"client_id":    []string{ClientID},
-		"redirect_uri": []string{RedirectURL},
+		"code":          []string{code},
+		"grant_type":    []string{"authorization_code"},
+		"client_id":     []string{ClientID},
+		"redirect_uri":  []string{RedirectURL},
+		"code_verifier": []string{pkce.Verifier()},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("requesting login page: %w", err)
@@ -199,4 +210,31 @@ func safeCopy(orgClient *http.Client) *http.Client {
 		*newClient = *orgClient
 	}
 	return newClient
+}
+
+func NewPKCE() (*PKCE, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, fmt.Errorf("generating random bytes: %w", err)
+	}
+	return &PKCE{
+		verifier: base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(bytes),
+	}, nil
+}
+
+type PKCE struct {
+	verifier string
+}
+
+func (p *PKCE) Method() string {
+	return "S256"
+}
+
+func (p *PKCE) Verifier() string {
+	return p.verifier
+}
+
+func (p *PKCE) Challenge() string {
+	h := sha256.Sum256([]byte(p.verifier))
+	return base64.RawURLEncoding.EncodeToString(h[:])
 }
