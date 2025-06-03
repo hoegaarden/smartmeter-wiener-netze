@@ -49,8 +49,8 @@ func Login(username, password string) (*Client, error) {
 		"response_mode":         []string{"fragment"},
 		"response_type":         []string{"code"},
 		"scope":                 []string{"openid"},
-		"code_challenge_method": []string{pkce.Method()},
-		"code_challenge":        []string{pkce.Challenge()},
+		"code_challenge_method": []string{pkce.Method},
+		"code_challenge":        []string{pkce.Challenge},
 	}.Encode()
 
 	loginPageRes, err := httpClient.Get(loginURL)
@@ -91,10 +91,10 @@ func Login(username, password string) (*Client, error) {
 		"grant_type":    []string{"authorization_code"},
 		"client_id":     []string{ClientID},
 		"redirect_uri":  []string{RedirectURL},
-		"code_verifier": []string{pkce.Verifier()},
+		"code_verifier": []string{pkce.Verifier},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("requesting login page: %w", err)
+		return nil, fmt.Errorf("requesting token data: %w", err)
 	}
 	defer tokenRes.Body.Close()
 
@@ -217,24 +217,20 @@ func NewPKCE() (*PKCE, error) {
 	if _, err := rand.Read(bytes); err != nil {
 		return nil, fmt.Errorf("generating random bytes: %w", err)
 	}
+
+	verifier := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(bytes)
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
 	return &PKCE{
-		verifier: base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(bytes),
+		Method:    "S256",
+		Verifier:  verifier,
+		Challenge: challenge,
 	}, nil
 }
 
 type PKCE struct {
-	verifier string
-}
-
-func (p *PKCE) Method() string {
-	return "S256"
-}
-
-func (p *PKCE) Verifier() string {
-	return p.verifier
-}
-
-func (p *PKCE) Challenge() string {
-	h := sha256.Sum256([]byte(p.verifier))
-	return base64.RawURLEncoding.EncodeToString(h[:])
+	Method    string
+	Verifier  string
+	Challenge string
 }
